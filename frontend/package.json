@@ -14,7 +14,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "npx tailwindcss -i ./src/input.css -o ./src/index.css && react-scripts build",
+    "build": "tailwindcss -i ./src/input.css -o ./src/index.css && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

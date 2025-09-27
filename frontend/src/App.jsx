@@ -10,7 +10,7 @@ const App = () => {
     const [isDragging, setIsDragging] = useState(false);
     
     // !!! IMPORTANT: Replace this with your actual backend URL from Railway or DigitalOcean !!!
-    const API_URL = "smart-resume-matcher-production.up.railway.app"; 
+    const API_URL = "https://smart-resume-matcher-production.up.railway.app";
 
     const handleFileChange = (files) => {
         if (files && files[0] && files[0].type === "application/pdf" && files[0].size < 5 * 1024 * 1024) {
