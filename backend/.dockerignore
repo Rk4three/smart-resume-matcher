@@ -1,0 +1,24 @@
+Python bytecode and cache
+pycache/
+*.pyc
+*.pyo
+*.pyd
+
+Virtual environments
+.env
+.venv
+venv/
+env/
+
+Build artifacts
+build/
+dist/
+*.egg-info/
+
+Git files
+.git
+.gitignore
+
+IDE / Editor folders
+.vscode/
+.idea/
