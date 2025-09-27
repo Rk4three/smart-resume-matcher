@@ -5,4 +5,3 @@ PyPDF2==3.0.1
 uvicorn==0.24.0
 python-multipart==0.0.6
 httpx==0.25.2
-

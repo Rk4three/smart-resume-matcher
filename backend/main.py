@@ -42,7 +42,7 @@ def extract_text_from_pdf(file_content: bytes) -> str:
 async def extract_skills_with_gemini(text: str) -> List[str]:
     if not gemini_api_key: return []
     prompt = f'Extract key skills from the text below. Return a JSON array of strings. Text: "{text}"'
-    api_url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=){gemini_api_key}"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={gemini_api_key}"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(api_url, json={"contents": [{"parts": [{"text": prompt}]}]})
