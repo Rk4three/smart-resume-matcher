@@ -11,4 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt --extra-index-url https://dow
 # Copy the rest of the application code (respecting .dockerignore)
 COPY . .
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$PORT"]
+# Use the "shell" form of CMD to correctly process the $PORT environment variable
+CMD uvicorn main:app --host 0.0.0.0 --port $PORT
