@@ -80,7 +80,7 @@ async def call_groq_api(prompt: str, retries: int = 3, delay: int = 2) -> str:
             chat_completion = await asyncio.to_thread(
                 groq_client.chat.completions.create,
                 messages=[{"role": "user", "content": prompt}],
-                model="llama3-8b-8192", # Or another model like "mixtral-8x7b-32768"
+                model="llama-3.1-8b-instant", 
             )
             return chat_completion.choices[0].message.content
         except APIError as e:
