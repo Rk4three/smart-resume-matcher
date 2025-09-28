@@ -9,7 +9,6 @@ const App = () => {
     const [error, setError] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
     
-    // !!! IMPORTANT: Replace this with your actual backend URL from Railway or DigitalOcean !!!
     const API_URL = "https://smart-resume-matcher-production.up.railway.app";
 
     const handleFileChange = (files) => {
@@ -154,13 +153,13 @@ const App = () => {
                                     <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200">
                                         <h3 className="text-lg font-semibold flex items-center gap-2 text-emerald-800 mb-3"><CheckCircle /> Matched Skills</h3>
                                         <ul className="flex flex-wrap gap-2">
-                                            {matchResult.matched_skills.map(skill => (<li key={skill} className="bg-emerald-100 text-emerald-900 text-sm font-medium px-3 py-1 rounded-full">{skill}</li>))}
+                                            {matchResult.matched_skills.map(skill => (<li key={skill} className="bg-emerald-100 text-emerald-900 text-sm font-medium px-3 py-1 rounded-full">{skill.replace(/_/g, ' ')}</li>))}
                                         </ul>
                                     </div>
                                     <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200">
                                         <h3 className="text-lg font-semibold flex items-center gap-2 text-amber-800 mb-3"><XCircle /> Areas for Improvement</h3>
                                         <ul className="flex flex-wrap gap-2">
-                                            {matchResult.missing_skills.map(skill => (<li key={skill} className="bg-amber-100 text-amber-900 text-sm font-medium px-3 py-1 rounded-full">{skill}</li>))}
+                                            {matchResult.missing_skills.map(skill => (<li key={skill} className="bg-amber-100 text-amber-900 text-sm font-medium px-3 py-1 rounded-full">{skill.replace(/_/g, ' ')}</li>))}
                                         </ul>
                                     </div>
                                 </div>
