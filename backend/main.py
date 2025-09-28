@@ -1,25 +1,25 @@
-import os, io, json, logging, re
-from typing import List, Dict, Set, Tuple
+import os, io, json, logging, re, asyncio
+from typing import List, Dict, Set, Any
 import httpx, PyPDF2
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sentence_transformers import SentenceTransformer
-from sentence_transformers.util import cos_sim
 from supabase import create_client, Client
 import skills_dictionary
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Smart Resume Matcher API", version="3.0.0")
+app = FastAPI(title="Smart Resume Matcher API", version="5.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 supabase: Client = None
 model: SentenceTransformer = None
 gemini_api_key: str = None
+skill_to_category: Dict[str, str] = {}
 
 @app.on_event("startup")
 async def startup_event():
-    global supabase, model, gemini_api_key
+    global supabase, model, gemini_api_key, skill_to_category
     try:
         SUPABASE_URL = os.environ.get("SUPABASE_URL")
         SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
@@ -46,6 +46,11 @@ async def startup_event():
     except Exception as e: 
         logger.error(f"Model loading error: {e}")
 
+    # Create a reverse mapping from skill to category for synergy analysis
+    for category, skills in skills_dictionary.SKILL_SYNONYMS.items():
+        for skill in skills:
+            skill_to_category[skill] = category
+
 def extract_text_from_pdf(file_content: bytes) -> str:
     try:
         text = "".join(page.extract_text() or "" for page in PyPDF2.PdfReader(io.BytesIO(file_content)).pages)
@@ -53,45 +58,45 @@ def extract_text_from_pdf(file_content: bytes) -> str:
     except Exception as e: 
         raise HTTPException(status_code=400, detail=f"Could not process PDF: {e}")
 
-async def extract_skills_with_gemini(text: str) -> List[str]:
-    if not gemini_api_key: 
-        logger.warning("Gemini API key not found. Skipping Gemini skill extraction.")
-        return []
-    
-    prompt = f'Extract all key skills, technologies, and qualifications from the following text. Return the result as a clean JSON array of strings, like ["Skill A", "Skill B", "Technology C"]. Text: "{text}"'
+async def call_gemini_api(prompt: str, retries: int = 3, delay: int = 2) -> Any:
+    if not gemini_api_key:
+        logger.warning("Gemini API key not found.")
+        return None
+
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={gemini_api_key}"
     
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(api_url, json={"contents": [{"parts": [{"text": prompt}]}]})
-            response.raise_for_status()
-            
-            result_text = response.json()['candidates'][0]['content']['parts'][0]['text']
-            json_match = re.search(r'\[.*\]', result_text, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
-            else:
-                logger.warning(f"Could not find a JSON array in Gemini response: {result_text}")
-                return []
-    except Exception as e: 
-        logger.error(f"Gemini API call failed: {e}")
-        return []
-
-def extract_skills_from_dictionary(text: str) -> Set[str]:
-    text_lower = text.lower()
-    found_skills = set()
-    for canonical, synonyms in skills_dictionary.SKILL_SYNONYMS.items():
-        all_variants = [canonical] + synonyms
-        for variant in all_variants:
-            if re.search(r'\b' + re.escape(variant) + r'\b', text_lower):
-                found_skills.add(canonical)
-                break 
-    return found_skills
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                response = await client.post(api_url, json={"contents": [{"parts": [{"text": prompt}]}]})
+                response.raise_for_status()
+                return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Gemini API request failed (attempt {attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(delay * (2 ** attempt)) 
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during Gemini API call: {e}")
+            break
+    return None
 
 async def extract_skills_hybrid(text: str) -> List[str]:
+    # This function now returns a list of canonical skill names
     dict_skills = extract_skills_from_dictionary(text)
-    gemini_skills_raw = await extract_skills_with_gemini(text)
     
+    prompt = f'Extract all key skills, technologies, and qualifications from the following text. Return the result as a clean JSON array of strings, like ["Skill A", "Skill B", "Technology C"]. Text: "{text}"'
+    response_json = await call_gemini_api(prompt)
+    
+    gemini_skills_raw = []
+    if response_json:
+        try:
+            result_text = response_json['candidates'][0]['content']['parts'][0]['text']
+            json_match = re.search(r'\[.*\]', result_text, re.DOTALL)
+            if json_match:
+                gemini_skills_raw = json.loads(json_match.group())
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            logger.error(f"Error parsing Gemini response for skill extraction: {e}")
+
     gemini_normalized = set()
     for skill in gemini_skills_raw:
         normalized = skills_dictionary.find_standard_skill(skill)
@@ -102,102 +107,98 @@ async def extract_skills_hybrid(text: str) -> List[str]:
             
     return sorted(list(dict_skills.union(gemini_normalized)))
 
-async def classify_skills_with_gemini(job_description: str, skills: List[str]) -> Dict[str, List[str]]:
-    if not gemini_api_key:
-        logger.warning("Gemini API key not found. Skipping skill classification.")
-        return {"required": skills, "preferred": [], "soft": []}
-
+async def classify_job_skills(job_description: str, skills: List[str]) -> Dict[str, List[str]]:
     prompt = f"""
-    Given the following job description and list of extracted skills, please classify each skill into one of three categories: "required", "preferred", or "soft".
+    Analyze the job description and classify the given skills into "required", "preferred", and "soft".
+    - "required": Skills that are absolutely essential. Look for keywords like "must have", "required", "proficient in", "strong experience".
+    - "preferred": Skills that are a "plus", "nice to have", or a "bonus".
+    - "soft": Interpersonal skills.
 
-    - "required": Essential skills explicitly stated as mandatory (e.g., "must have," "required," "strong experience in").
-    - "preferred": Skills that are advantageous but not mandatory (e.g., "plus," "bonus," "nice to have," "familiarity with").
-    - "soft": Interpersonal and non-technical skills (e.g., "communication," "teamwork," "problem-solving").
+    Job Description: "{job_description}"
+    Skills: {json.dumps(skills)}
 
-    Job Description:
-    "{job_description}"
-
-    Skills:
-    {json.dumps(skills)}
-
-    Return the result as a single JSON object with three keys: "required", "preferred", and "soft", each containing a list of the classified skills.
-    Example format: {{"required": ["Java", "Spring Boot"], "preferred": ["Docker", "Kubernetes"], "soft": ["Communication", "Teamwork"]}}
+    Return a single JSON object with "required", "preferred", and "soft" as keys.
     """
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={gemini_api_key}"
-
+    response_json = await call_gemini_api(prompt)
+    if not response_json:
+        return {"required": skills, "preferred": [], "soft": []}
+    
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(api_url, json={"contents": [{"parts": [{"text": prompt}]}]})
-            response.raise_for_status()
-            
-            result_text = response.json()['candidates'][0]['content']['parts'][0]['text']
-            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
-            else:
-                logger.warning(f"Could not find a JSON object in Gemini response for skill classification: {result_text}")
-                return {"required": skills, "preferred": [], "soft": []}
-    except Exception as e:
-        logger.error(f"Gemini API call for skill classification failed: {e}")
+        result_text = response_json['candidates'][0]['content']['parts'][0]['text']
+        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+        else:
+            logger.warning(f"Could not find JSON object in Gemini response for skill classification: {result_text}")
+            return {"required": skills, "preferred": [], "soft": []}
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        logger.error(f"Error parsing Gemini response for skill classification: {e}")
         return {"required": skills, "preferred": [], "soft": []}
 
-def calculate_weighted_similarity(resume_skills: List[str], classified_skills: Dict[str, List[str]]) -> Dict:
-    if not model: 
-        raise HTTPException(status_code=503, detail="AI model not available.")
-
-    required_skills = classified_skills.get("required", [])
-    preferred_skills = classified_skills.get("preferred", [])
-    soft_skills = classified_skills.get("soft", [])
-
-    all_job_skills = required_skills + preferred_skills + soft_skills
-    if not all_job_skills:
-        return {"score": 0, "matched_skills": [], "missing_skills": []}
-    if not resume_skills:
-        return {"score": 0, "matched_skills": [], "missing_skills": all_job_skills}
-
-    resume_emb = model.encode(resume_skills)
-    job_emb = model.encode(all_job_skills)
+def calculate_final_score(resume_skills: List[str], classified_skills: Dict[str, List[str]]) -> Dict:
+    required = classified_skills.get("required", [])
+    preferred = classified_skills.get("preferred", [])
+    soft = classified_skills.get("soft", [])
     
-    cos_scores = cos_sim(resume_emb, job_emb)
-    
-    matched_skills = set()
-    job_skill_max_similarity = {}
-    for i, job_skill in enumerate(all_job_skills):
-        max_similarity = max(cos_scores[:, i]).item()
-        job_skill_max_similarity[job_skill] = max_similarity
-        if max_similarity > 0.65:
-            matched_skills.add(job_skill)
+    resume_skills_set = set(resume_skills)
+    has_soft_skills_in_resume = any(s in resume_skills_set for s in soft)
 
-    weights = {"required": 3.0, "preferred": 1.0, "soft": 0.5}
+    weights = {"required": 3.0, "preferred": 0.5, "soft": 0.2, "synergy": 0.25}
     
-    total_weighted_score = 0
-    total_weight = 0
+    score = 0
+    max_score = 0
+    
+    matched_skills = resume_skills_set.intersection(set(required + preferred + soft))
+    missing_skills = set(required) - matched_skills
 
-    for skill in required_skills:
-        weight = weights["required"]
-        total_weight += weight
+    # Score required skills
+    for skill in required:
+        max_score += weights["required"]
         if skill in matched_skills:
-            total_weighted_score += weight
+            score += weights["required"]
     
-    for skill in preferred_skills:
-        weight = weights["preferred"]
-        total_weight += weight
+    # Score preferred skills (bonus)
+    for skill in preferred:
+        max_score += weights["preferred"]
         if skill in matched_skills:
-            total_weighted_score += weight
+            score += weights["preferred"]
 
-    for skill in soft_skills:
-        weight = weights["soft"]
-        total_weight += weight
-        if skill in matched_skills:
-            total_weighted_score += weight
-
-    score = (total_weighted_score / total_weight) * 100 if total_weight > 0 else 0
-    missing_skills = set(all_job_skills) - matched_skills
+    # Score soft skills only if resume has any
+    if has_soft_skills_in_resume:
+        for skill in soft:
+            max_score += weights["soft"]
+            if skill in matched_skills:
+                score += weights["soft"]
+                
+    # Synergy bonus
+    matched_categories = {}
+    for skill in matched_skills:
+        category = skill_to_category.get(skill)
+        if category:
+            matched_categories[category] = matched_categories.get(category, 0) + 1
     
+    for category, count in matched_categories.items():
+        if count > 1:
+            synergy_bonus = (count - 1) * weights["synergy"]
+            score += synergy_bonus
+            max_score += synergy_bonus
+
+    final_score = (score / max_score) * 100 if max_score > 0 else 0
+
+    # Actionable suggestions
+    suggestions = []
+    for missing in missing_skills:
+        missing_category = skill_to_category.get(missing)
+        if missing_category:
+            related_matched = [s for s in matched_skills if skill_to_category.get(s) == missing_category]
+            if related_matched:
+                suggestions.append(f"You're missing '{missing.replace('_', ' ')}', but your experience with '{related_matched[0].replace('_', ' ')}' is a great foundation.")
+
     return {
-        "score": round(score, 2), 
-        "matched_skills": sorted(list(matched_skills)), 
-        "missing_skills": sorted(list(missing_skills))
+        "score": round(min(final_score, 100), 2),
+        "matched_skills": sorted(list(matched_skills)),
+        "missing_skills": sorted(list(missing_skills)),
+        "suggestions": suggestions
     }
 
 @app.post("/api/calculate-match")
@@ -211,8 +212,8 @@ async def create_match_from_upload(file: UploadFile = File(...), job_description
     resume_skills = await extract_skills_hybrid(resume_text)
     job_skills = await extract_skills_hybrid(job_description)
 
-    classified_skills = await classify_skills_with_gemini(job_description, job_skills)
+    classified_skills = await classify_job_skills(job_description, job_skills)
     
-    match_results = calculate_weighted_similarity(resume_skills, classified_skills)
+    match_results = calculate_final_score(resume_skills, classified_skills)
 
     return match_results

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { UploadCloud, FileText, Briefcase, CheckCircle, XCircle, ArrowRight, BrainCircuit, RotateCw, Github, Linkedin, Twitter } from 'lucide-react';
+import { UploadCloud, FileText, Briefcase, CheckCircle, XCircle, ArrowRight, BrainCircuit, RotateCw, Lightbulb } from 'lucide-react';
 
 const App = () => {
     const [resume, setResume] = useState(null);
@@ -63,6 +63,10 @@ const App = () => {
         setIsDragging(false);
         handleFileChange(e.dataTransfer.files);
     };
+
+    const formatSkill = (skill) => {
+        return skill.replace(/_/g, ' ');
+    }
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
@@ -153,27 +157,32 @@ const App = () => {
                                     <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200">
                                         <h3 className="text-lg font-semibold flex items-center gap-2 text-emerald-800 mb-3"><CheckCircle /> Matched Skills</h3>
                                         <ul className="flex flex-wrap gap-2">
-                                            {matchResult.matched_skills.map(skill => (<li key={skill} className="bg-emerald-100 text-emerald-900 text-sm font-medium px-3 py-1 rounded-full">{skill.replace(/_/g, ' ')}</li>))}
+                                            {matchResult.matched_skills.map(skill => (<li key={skill} className="bg-emerald-100 text-emerald-900 text-sm font-medium px-3 py-1 rounded-full">{formatSkill(skill)}</li>))}
                                         </ul>
                                     </div>
                                     <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200">
-                                        <h3 className="text-lg font-semibold flex items-center gap-2 text-amber-800 mb-3"><XCircle /> Areas for Improvement</h3>
+                                        <h3 className="text-lg font-semibold flex items-center gap-2 text-amber-800 mb-3"><XCircle /> Missing Skills</h3>
                                         <ul className="flex flex-wrap gap-2">
-                                            {matchResult.missing_skills.map(skill => (<li key={skill} className="bg-amber-100 text-amber-900 text-sm font-medium px-3 py-1 rounded-full">{skill.replace(/_/g, ' ')}</li>))}
+                                            {matchResult.missing_skills.map(skill => (<li key={skill} className="bg-amber-100 text-amber-900 text-sm font-medium px-3 py-1 rounded-full">{formatSkill(skill)}</li>))}
                                         </ul>
                                     </div>
                                 </div>
+                                {matchResult.suggestions && matchResult.suggestions.length > 0 && (
+                                    <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-200">
+                                        <h3 className="text-lg font-semibold flex items-center gap-2 text-blue-800 mb-3"><Lightbulb /> Actionable Suggestions</h3>
+                                        <ul className="space-y-2">
+                                            {matchResult.suggestions.map((suggestion, index) => (
+                                                <li key={index} className="text-blue-900 text-sm">{suggestion}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
                 </main>
                 <footer className="text-center mt-16 text-slate-500">
                     <p className="mb-2">Built with a Hybrid AI approach.</p>
-                     <div className="flex justify-center gap-6">
-                        <a href="#" className="hover:text-indigo-600 transition-colors"><Github /></a>
-                        <a href="#" className="hover:text-indigo-600 transition-colors"><Linkedin /></a>
-                        <a href="#" className="hover:text-indigo-600 transition-colors"><Twitter /></a>
-                    </div>
                 </footer>
             </div>
             <style>{`
