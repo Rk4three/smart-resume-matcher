@@ -3,43 +3,38 @@ from typing import List, Dict, Set, Any
 import httpx, PyPDF2
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sentence_transformers import SentenceTransformer
 from supabase import create_client, Client
 import skills_dictionary
 from groq import Groq, APIError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Smart Resume Matcher API", version="6.0.0-groq")
+app = FastAPI(title="Smart Resume Matcher API", version="7.0.0-optimized")
 
-# Correct CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allows all origins for simplicity, restrict in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
 
 supabase: Client = None
-model: SentenceTransformer = None
 groq_client: Groq = None
 skill_to_category: Dict[str, str] = {}
 
 @app.on_event("startup")
 async def startup_event():
-    global supabase, model, groq_client, skill_to_category
+    global supabase, groq_client, skill_to_category
     try:
         SUPABASE_URL = os.environ.get("SUPABASE_URL")
         SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
         if not SUPABASE_KEY:
             SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
-            logger.warning("Using ANON KEY for Supabase. Secrets may not be accessible.")
 
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         logger.info("Successfully connected to Supabase.")
         
-        # Fetch the Groq API key instead of Gemini
         response = supabase.table('secrets').select('value').eq('key', 'GROQ_API_KEY').single().execute()
         if response.data and response.data.get('value'):
             GROQ_API_KEY = response.data['value']
@@ -51,13 +46,6 @@ async def startup_event():
     except Exception as e: 
         logger.error(f"DB/API Key Error: {e}")
 
-    try:
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-        logger.info("SentenceTransformer model loaded.")
-    except Exception as e: 
-        logger.error(f"Model loading error: {e}")
-
-    # Create a reverse mapping from skill to category
     for category, skills in skills_dictionary.SKILL_SYNONYMS.items():
         for skill in skills:
             skill_to_category[skill] = category
@@ -80,7 +68,7 @@ async def call_groq_api(prompt: str, retries: int = 3, delay: int = 2) -> str:
             chat_completion = await asyncio.to_thread(
                 groq_client.chat.completions.create,
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.1-8b-instant", 
+                model="llama-3.1-8b-instant",
             )
             return chat_completion.choices[0].message.content
         except APIError as e:
@@ -109,25 +97,24 @@ async def extract_skills_hybrid(text: str) -> List[str]:
     prompt = f'Extract all key skills, technologies, and qualifications from the following text. Respond ONLY with a valid JSON array of strings, like ["Skill A", "Skill B", "Technology C"]. Text: "{text}"'
     
     response_text = await call_groq_api(prompt)
-    gemini_skills_raw = []
+    api_skills_raw = []
     if response_text:
         try:
-            # Groq is good at returning just the JSON, but we clean it just in case
             json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
             if json_match:
-                gemini_skills_raw = json.loads(json_match.group())
+                api_skills_raw = json.loads(json_match.group())
         except json.JSONDecodeError as e:
-            logger.error(f"Error parsing Groq response for skill extraction: {e}")
+            logger.error(f"Error parsing API response for skill extraction: {e}")
 
-    gemini_normalized = set()
-    for skill in gemini_skills_raw:
+    normalized_api_skills = set()
+    for skill in api_skills_raw:
         normalized = skills_dictionary.find_standard_skill(skill)
         if normalized:
-            gemini_normalized.add(normalized)
+            normalized_api_skills.add(normalized)
         else:
-            gemini_normalized.add(skill.strip().lower())
+            normalized_api_skills.add(skill.strip().lower())
             
-    return sorted(list(dict_skills.union(gemini_normalized)))
+    return sorted(list(dict_skills.union(normalized_api_skills)))
 
 async def classify_job_skills(job_description: str, skills: List[str]) -> Dict[str, List[str]]:
     prompt = f"""
