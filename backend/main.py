@@ -10,7 +10,19 @@ import skills_dictionary
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Smart Resume Matcher API", version="5.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+# Correct CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://smart-resume-matcher-jg4g6la31-rk4threes-projects.vercel.app",
+        "*" 
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
 
 supabase: Client = None
 model: SentenceTransformer = None
@@ -50,6 +62,8 @@ async def startup_event():
     for category, skills in skills_dictionary.SKILL_SYNONYMS.items():
         for skill in skills:
             skill_to_category[skill] = category
+        skill_to_category[category] = category
+
 
 def extract_text_from_pdf(file_content: bytes) -> str:
     try:
@@ -80,8 +94,18 @@ async def call_gemini_api(prompt: str, retries: int = 3, delay: int = 2) -> Any:
             break
     return None
 
+def extract_skills_from_dictionary(text: str) -> Set[str]:
+    text_lower = text.lower()
+    found_skills = set()
+    for canonical, synonyms in skills_dictionary.SKILL_SYNONYMS.items():
+        all_variants = [canonical] + synonyms
+        for variant in all_variants:
+            if re.search(r'\b' + re.escape(variant) + r'\b', text_lower):
+                found_skills.add(canonical)
+                break
+    return found_skills
+
 async def extract_skills_hybrid(text: str) -> List[str]:
-    # This function now returns a list of canonical skill names
     dict_skills = extract_skills_from_dictionary(text)
     
     prompt = f'Extract all key skills, technologies, and qualifications from the following text. Return the result as a clean JSON array of strings, like ["Skill A", "Skill B", "Technology C"]. Text: "{text}"'
