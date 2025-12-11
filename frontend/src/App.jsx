@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, CheckCircle, AlertCircle, X, Briefcase, ChevronRight, Sparkles, TrendingUp, Award, Target, Layers } from 'lucide-react';
 
-const API_URL = 'https://your-app-name.onrender.com';
+const API_URL = 'https://smart-resume-matcher-h1kd.onrender.com';
 
 function App() {
   const [file, setFile] = useState(null);
