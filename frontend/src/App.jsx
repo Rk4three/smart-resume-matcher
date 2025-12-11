@@ -1,197 +1,352 @@
-import React, { useState, useMemo } from 'react';
-import { UploadCloud, FileText, Briefcase, CheckCircle, XCircle, ArrowRight, BrainCircuit, RotateCw, Lightbulb } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Upload, CheckCircle, AlertCircle, X, Briefcase, ChevronRight, Sparkles, TrendingUp, Award, Target, Layers } from 'lucide-react';
 
-const App = () => {
-    const [resume, setResume] = useState(null);
-    const [jobDescription, setJobDescription] = useState("");
-    const [matchResult, setMatchResult] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [isDragging, setIsDragging] = useState(false);
-    
-    const API_URL = "https://smart-resume-matcher-production.up.railway.app";
+const API_URL = 'https://your-app-name.onrender.com';
 
-    const handleFileChange = (files) => {
-        if (files && files[0] && files[0].type === "application/pdf" && files[0].size < 5 * 1024 * 1024) {
-            setResume(files[0]);
-            setError(null);
-            setMatchResult(null);
-        } else {
-            setError("Please upload a PDF file smaller than 5MB.");
-        }
-    };
+function App() {
+  const [file, setFile] = useState(null);
+  const [jobDescription, setJobDescription] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [matchResult, setMatchResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef(null);
 
-    const handleSubmit = async () => {
-        if (!resume || !jobDescription) return setError("Please provide a resume and job description.");
-        if (API_URL.includes("your-backend-url")) return setError("Please update the API_URL in src/App.js");
-        
-        setIsLoading(true);
-        setError(null);
-        setMatchResult(null);
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
 
-        const formData = new FormData();
-        formData.append('file', resume);
-        formData.append('job_description', jobDescription);
-        
-        try {
-            const response = await fetch(`${API_URL}/api/calculate-match`, { method: 'POST', body: formData });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || "An error occurred during analysis.");
-            }
-            setMatchResult(await response.json());
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    
-    const scoreColor = useMemo(() => {
-        if (!matchResult) return 'text-slate-800';
-        if (matchResult.score >= 85) return 'text-emerald-500';
-        if (matchResult.score >= 70) return 'text-amber-500';
-        return 'text-red-500';
-    }, [matchResult]);
-    
-    const handleDragEnter = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
-    const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
-    const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); };
-    const handleDrop = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-        handleFileChange(e.dataTransfer.files);
-    };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  };
 
-    const formatSkill = (skill) => {
-        return skill.replace(/_/g, ' ');
+  const handleChange = (e) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0]);
+    }
+  };
+
+  const handleFile = (file) => {
+    if (file.type === "application/pdf") {
+      setFile(file);
+      setError(null);
+    } else {
+      setError("Please upload a PDF file.");
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!file || !jobDescription) {
+      setError("Please provide both a resume and job description.");
+      return;
     }
 
-    return (
-        <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
-            <div className="container mx-auto px-4 py-8 md:py-16">
-                <header className="text-center mb-12 md:mb-16">
-                    <div className="inline-flex items-center gap-3 mb-4">
-                        <BrainCircuit className="h-10 w-10 text-indigo-600" />
-                        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-slate-900">Smart Resume Matcher</h1>
-                    </div>
-                    <p className="text-lg md:text-xl text-slate-600 max-w-3xl mx-auto">
-                        Upload your resume and paste a job description to get an AI-powered compatibility score in seconds.
-                    </p>
-                </header>
-                
-                <main className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-start">
-                    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200 space-y-8">
-                        <div>
-                            <h2 className="text-2xl font-semibold flex items-center gap-3 mb-4">
-                                <FileText className="text-indigo-600" /> Your Resume
-                            </h2>
-                            <div 
-                                onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
-                                className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${isDragging ? 'border-indigo-600 bg-indigo-50' : 'border-slate-300 hover:border-indigo-500'}`}>
-                                <input type="file" id="resume-upload" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => handleFileChange(e.target.files)} accept=".pdf" />
-                                <UploadCloud className="mx-auto h-12 w-12 text-slate-400 mb-4" />
-                                <label htmlFor="resume-upload" className="font-semibold text-indigo-600 cursor-pointer">Click to upload</label>
-                                <p className="text-sm text-slate-500 mt-1">or drag and drop PDF (max 5MB)</p>
-                            </div>
-                            {resume && (
-                                <div className="mt-4 bg-slate-100 p-3 rounded-lg flex items-center justify-between">
-                                    <div className="flex items-center gap-3 overflow-hidden">
-                                        <FileText className="h-5 w-5 text-indigo-600 flex-shrink-0" />
-                                        <span className="text-sm font-medium text-slate-700 truncate">{resume.name}</span>
-                                    </div>
-                                    <button onClick={() => setResume(null)} className="text-slate-500 hover:text-red-500 transition-colors"><XCircle className="h-5 w-5" /></button>
-                                </div>
-                            )}
-                        </div>
-                        <div>
-                            <h2 className="text-2xl font-semibold flex items-center gap-3 mb-4"><Briefcase className="text-indigo-600" /> Job Description</h2>
-                            <textarea
-                                value={jobDescription}
-                                onChange={(e) => { setJobDescription(e.target.value); setMatchResult(null); }}
-                                placeholder="Paste the full job description here..."
-                                className="w-full h-48 p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow duration-200 resize-y"
-                            />
-                        </div>
-                        <button
-                            onClick={handleSubmit} disabled={isLoading || !resume || !jobDescription}
-                            className="w-full bg-indigo-600 text-white font-bold py-4 px-6 rounded-xl text-lg flex items-center justify-center gap-3 hover:bg-indigo-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-indigo-300">
-                            {isLoading ? (<><RotateCw className="animate-spin h-6 w-6" /> Analyzing...</>) : (<>Calculate Match <ArrowRight className="h-6 w-6" /></>)}
-                        </button>
-                    </div>
-                    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200 min-h-[30rem] flex flex-col justify-center">
-                        {error && <div className="text-center text-red-600 bg-red-100 p-4 rounded-lg">{error}</div>}
-                        {!matchResult && !isLoading && !error && (
-                            <div className="text-center text-slate-500">
-                                <BrainCircuit className="h-16 w-16 mx-auto mb-4 text-slate-400" />
-                                <h3 className="text-xl font-semibold mb-2">Awaiting Analysis</h3>
-                                <p>Your match results will appear here.</p>
-                            </div>
-                        )}
-                        {isLoading && (
-                           <div className="text-center text-slate-600">
-                               <div className="relative w-24 h-24 mx-auto mb-6">
-                                   <div className="absolute inset-0 border-4 border-indigo-200 rounded-full"></div>
-                                   <div className="absolute inset-0 border-t-4 border-indigo-600 rounded-full animate-spin"></div>
-                               </div>
-                               <h3 className="text-xl font-semibold mb-2 animate-pulse">AI is thinking...</h3>
-                               <p>Analyzing skills and experience.</p>
-                           </div>
-                        )}
-                        {matchResult && (
-                            <div className="animate-fade-in space-y-8">
-                                <div>
-                                    <h2 className="text-center text-2xl font-semibold text-slate-800 mb-4">Compatibility Score</h2>
-                                    <div className="relative w-40 h-40 mx-auto">
-                                        <svg className="w-full h-full" viewBox="0 0 36 36">
-                                            <path className="text-slate-200" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3"></path>
-                                            <path className={`${scoreColor.replace('text-', 'stroke-')}`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={`${matchResult.score}, 100`} strokeDashoffset="0" transform="rotate(-90 18 18)"></path>
-                                        </svg>
-                                        <div className={`absolute inset-0 flex items-center justify-center text-5xl font-bold ${scoreColor}`}>
-                                            {Math.round(matchResult.score)}<span className="text-2xl mt-1">%</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200">
-                                        <h3 className="text-lg font-semibold flex items-center gap-2 text-emerald-800 mb-3"><CheckCircle /> Matched Skills</h3>
-                                        <ul className="flex flex-wrap gap-2">
-                                            {matchResult.matched_skills.map(skill => (<li key={skill} className="bg-emerald-100 text-emerald-900 text-sm font-medium px-3 py-1 rounded-full">{formatSkill(skill)}</li>))}
-                                        </ul>
-                                    </div>
-                                    <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200">
-                                        <h3 className="text-lg font-semibold flex items-center gap-2 text-amber-800 mb-3"><XCircle /> Missing Skills</h3>
-                                        <ul className="flex flex-wrap gap-2">
-                                            {matchResult.missing_skills.map(skill => (<li key={skill} className="bg-amber-100 text-amber-900 text-sm font-medium px-3 py-1 rounded-full">{formatSkill(skill)}</li>))}
-                                        </ul>
-                                    </div>
-                                </div>
-                                {matchResult.suggestions && matchResult.suggestions.length > 0 && (
-                                    <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-200">
-                                        <h3 className="text-lg font-semibold flex items-center gap-2 text-blue-800 mb-3"><Lightbulb /> Actionable Suggestions</h3>
-                                        <ul className="space-y-2">
-                                            {matchResult.suggestions.map((suggestion, index) => (
-                                                <li key={index} className="text-blue-900 text-sm">{suggestion}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </main>
-                <footer className="text-center mt-16 text-slate-500">
-                    <p className="mb-2">Built with a Hybrid AI approach.</p>
-                </footer>
+    setIsLoading(true);
+    setError(null);
+    setMatchResult(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('job_description', jobDescription);
+
+    try {
+      const response = await fetch(`${API_URL}/api/calculate-match`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setMatchResult(data);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to analyze. Ensure the backend is running on port 8000.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const clearFile = () => {
+    setFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const getScoreColor = (score) => {
+    if (score >= 80) return 'text-green-600';
+    if (score >= 60) return 'text-blue-600';
+    if (score >= 40) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getScoreBgColor = (score) => {
+    if (score >= 80) return 'bg-green-50 border-green-200';
+    if (score >= 60) return 'bg-blue-50 border-blue-200';
+    if (score >= 40) return 'bg-yellow-50 border-yellow-200';
+    return 'bg-red-50 border-red-200';
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-600 rounded-lg">
+              <Sparkles className="w-6 h-6 text-white" />
             </div>
-            <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-                body { font-family: 'Inter', sans-serif; }
-                @keyframes fade-in { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
-                .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
-            `}</style>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Smart Resume Matcher</h1>
+              <p className="text-sm text-gray-600">AI-powered resume analysis with skill category matching</p>
+            </div>
+          </div>
         </div>
-    );
-};
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Input Section */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-8">
+          {/* Resume Upload */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Upload Resume (PDF)
+            </label>
+
+            {file ? (
+              <div className="flex items-center justify-between p-4 bg-indigo-50 border-2 border-indigo-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="w-5 h-5 text-indigo-600" />
+                  <div>
+                    <p className="font-medium text-gray-900">{file.name}</p>
+                    <p className="text-sm text-gray-600">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
+                </div>
+                <button
+                  onClick={clearFile}
+                  className="p-2 hover:bg-indigo-100 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
+            ) : (
+              <div
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all ${
+                  dragActive
+                    ? 'border-indigo-500 bg-indigo-50'
+                    : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
+                }`}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-600 mb-1">Drag & drop your PDF here</p>
+                <p className="text-sm text-gray-500">or click to browse files</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleChange}
+                  className="hidden"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Job Description */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Job Description
+            </label>
+            <textarea
+              value={jobDescription}
+              onChange={(e) => setJobDescription(e.target.value)}
+              placeholder="Paste the full job description here..."
+              className="w-full h-48 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Analyze Button */}
+        <div className="text-center mb-8">
+          <button
+            onClick={handleSubmit}
+            disabled={!file || !jobDescription || isLoading}
+            className="px-8 py-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all transform hover:scale-105 disabled:transform-none"
+          >
+            {isLoading ? (
+              <>
+                <span className="inline-block animate-spin mr-2">⚙️</span>
+                Analyzing with AI...
+              </>
+            ) : (
+              <>
+                <Sparkles className="inline w-5 h-5 mr-2" />
+                Analyze Match
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <p className="text-red-800">{error}</p>
+          </div>
+        )}
+
+        {/* Results Section */}
+        {matchResult && (
+          <div className="space-y-6">
+            {/* Score Card */}
+            <div className={`rounded-xl shadow-lg border-2 p-8 ${getScoreBgColor(matchResult.score)}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-700 mb-2">Match Score</h2>
+                  <p className={`text-6xl font-bold ${getScoreColor(matchResult.score)}`}>
+                    {matchResult.score}%
+                  </p>
+                  {matchResult.breakdown && (
+                    <div className="mt-4 space-y-2 text-sm text-gray-600">
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <p className="font-medium">Required Skills</p>
+                          <p>{matchResult.breakdown.required_match}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium">Preferred Skills</p>
+                          <p>{matchResult.breakdown.preferred_match}</p>
+                        </div>
+                      </div>
+                      {matchResult.breakdown.category_matches > 0 && (
+                        <div className="flex items-center gap-2 text-indigo-700">
+                          <Layers className="w-4 h-4" />
+                          <p>{matchResult.breakdown.category_matches} category-based matches</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="text-6xl">
+                  {matchResult.score >= 80 ? '🎯' : matchResult.score >= 60 ? '👍' : '📊'}
+                </div>
+              </div>
+            </div>
+
+            {/* Suggestions */}
+            {matchResult.suggestions && matchResult.suggestions.length > 0 && (
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6">
+                <div className="flex items-start gap-3">
+                  <Award className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-blue-900 mb-2">Insights</h3>
+                    <ul className="space-y-2">
+                      {matchResult.suggestions.map((suggestion, idx) => (
+                        <li key={idx} className="text-blue-800 flex items-start gap-2">
+                          <ChevronRight className="w-4 h-4 flex-shrink-0 mt-1" />
+                          <span>{suggestion}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Skills Grid */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Matched Required Skills */}
+              {matchResult.matched_skills && matchResult.matched_skills.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <h3 className="font-semibold text-gray-900">Matched Required Skills</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {matchResult.matched_skills.map((skill, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-sm font-medium"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Matched Preferred Skills */}
+              {matchResult.matched_preferred && matchResult.matched_preferred.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Target className="w-5 h-5 text-blue-600" />
+                    <h3 className="font-semibold text-gray-900">Matched Preferred Skills</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {matchResult.matched_preferred.map((skill, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1.5 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Missing Skills */}
+              {matchResult.missing_critical && matchResult.missing_critical.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <AlertCircle className="w-5 h-5 text-orange-600" />
+                    <h3 className="font-semibold text-gray-900">Skills to Consider</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {matchResult.missing_critical.map((skill, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1.5 bg-orange-100 text-orange-800 rounded-full text-sm font-medium"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!matchResult && !isLoading && !error && (
+          <div className="text-center py-16 bg-white rounded-xl shadow-sm border border-gray-200">
+            <Briefcase className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">Upload a resume and paste a job description to get started</p>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
 export default App;
