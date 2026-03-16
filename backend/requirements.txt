@@ -7,3 +7,12 @@ groq>=0.11.0
 python-dotenv>=1.0.1
 rapidfuzz>=3.6.0
 pydantic<2.13.0
+
+# Optional offline fallbacks — NOT compatible with Python 3.14 (Pydantic v1 limitation).
+# Uncomment and install only if running Python 3.11 or 3.12:
+#   pip install sentence-transformers spacy skillner
+#   python -m spacy download en_core_web_lg
+#
+# sentence-transformers>=3.0.0
+# spacy>=3.7.0
+# skillner>=1.0.0

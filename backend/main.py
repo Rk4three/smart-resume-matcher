@@ -184,24 +184,6 @@ Return ONLY this JSON (no markdown, no extra text):
 
 
 # ============================================================================
-# EXPERIENCE LEVEL DETECTOR
-# ============================================================================
-def detect_experience_level(job_text: str) -> str:
-    text_lower = job_text.lower()
-    senior_signals = ["senior", "lead", "principal", "staff", "architect", "10+ years", "8+ years", "7+ years"]
-    junior_signals = ["junior", "entry level", "entry-level", "graduate", "fresh", "0-2 years", "1-2 years", "new grad"]
-    mid_signals    = ["mid", "intermediate", "3-5 years", "2-4 years", "2-5 years", "4-6 years"]
-
-    if any(s in text_lower for s in senior_signals):
-        return "Senior"
-    if any(s in text_lower for s in junior_signals):
-        return "Junior"
-    if any(s in text_lower for s in mid_signals):
-        return "Mid-level"
-    return "Mid-level"
-
-
-# ============================================================================
 # SCORE LABEL
 # ============================================================================
 def score_label(score: float) -> str:
@@ -229,8 +211,10 @@ def _skills_match(skill_a: str, skill_b: str) -> bool:
 def find_matches(resume_skills: List[str], target_skills: List[str]) -> tuple[List[str], List[str]]:
     """
     Returns (matched_display, unmatched_display).
-    Uses RapidFuzz partial_ratio for fuzzy matching — handles synonyms like
-    'React.js' ↔ 'React', 'Node' ↔ 'Node.js', and avoids 'Java' ↔ 'JavaScript'.
+
+    Slash-notation skills like "webpack/vite" or "react/angular/vue.js" are treated
+    as OR alternatives — satisfied if ANY alternative is found in the resume.
+    Uses RapidFuzz partial_ratio for fuzzy matching within each alternative.
     """
     matched = []
     unmatched = []
@@ -238,11 +222,18 @@ def find_matches(resume_skills: List[str], target_skills: List[str]) -> tuple[Li
 
     for ts in target_skills:
         ts_norm = ts.lower().strip()
-        found = any(_skills_match(ts_norm, rs) for rs in resume_lower)
+        # Explicit OR handling: split "webpack/vite" → ["webpack", "vite"]
+        alternatives = [alt.strip() for alt in ts_norm.split("/")]
+        found = any(
+            _skills_match(alt, rs)
+            for alt in alternatives
+            for rs in resume_lower
+        )
+        display = ts.title() if ts == ts.lower() else ts
         if found:
-            matched.append(ts.title() if ts == ts.lower() else ts)
+            matched.append(display)
         else:
-            unmatched.append(ts.title() if ts == ts.lower() else ts)
+            unmatched.append(display)
 
     return matched, unmatched
 
@@ -257,14 +248,14 @@ def calculate_score(
     semantic_sim: float,
 ) -> Dict:
     matched_req,  missing_req  = find_matches(resume_skills, required)
-    matched_pref, _            = find_matches(resume_skills, preferred)
+    matched_pref, missing_pref = find_matches(resume_skills, preferred)
 
     req_ratio  = len(matched_req)  / len(required)  if required  else 0.0
     pref_ratio = len(matched_pref) / len(preferred) if preferred else 0.0
 
-    required_score  = req_ratio  * 55
-    preferred_score = pref_ratio * 20
-    semantic_score  = semantic_sim * 25
+    required_score  = req_ratio  * 50
+    preferred_score = pref_ratio * 15
+    semantic_score  = semantic_sim * 35
 
     total = round(min(required_score + preferred_score + semantic_score, 100.0), 1)
 
@@ -276,7 +267,7 @@ def calculate_score(
     if req_pct >= 90:
         suggestions.append("Excellent match! You meet almost all required skills.")
     elif req_pct >= 70:
-        suggestions.append("Strong match! You meet most required technical skills.")
+        suggestions.append("Strong match! You meet most required skills.")
     elif req_pct >= 50:
         suggestions.append("Moderate match. Focus on the missing required skills.")
     elif semantic_sim >= 0.75:
@@ -303,6 +294,7 @@ def calculate_score(
         "matched_skills": sorted(matched_req),
         "matched_preferred": sorted(matched_pref),
         "missing_critical": sorted(missing_req),
+        "missing_preferred": sorted(missing_pref),
         "suggestions": suggestions,
     }
 
@@ -325,15 +317,21 @@ async def calculate_match(
         raise HTTPException(status_code=400, detail="Resume text too short or unreadable")
 
     try:
-        # 2. Parallel: resume skill extraction + job extraction+categorisation + semantic similarity
+        # 2. Detect domain first (fast single call) — drives category generation
+        domain = "general"
+        if skill_extractor:
+            domain = await skill_extractor.detect_domain(job_description)
+            logger.info(f"Detected domain: {domain}")
+
+        # 3. Parallel: resume skill extraction + job extraction+categorisation + semantic similarity
         async def extract_resume():
             if skill_extractor:
-                return await skill_extractor.extract_resume(resume_text)
+                return await skill_extractor.extract_resume(resume_text, domain=domain)
             return []
 
         async def extract_job():
             if skill_extractor:
-                return await skill_extractor.extract_job_with_categories(job_description)
+                return await skill_extractor.extract_job_with_categories(job_description, domain=domain)
             return {"required": [], "preferred": [], "categories": {}}
 
         async def semantic_sim():
@@ -364,14 +362,16 @@ async def calculate_match(
     result = calculate_score(resume_skills, required, preferred, sem_score)
 
     # 4. Per-category scores (uses Groq-provided category map)
+    # Only include categories with at least one matched skill (score > 0) to avoid noise.
     category_scores: Dict[str, int] = {}
     if skill_extractor:
-        category_scores = await asyncio.to_thread(
+        raw_category_scores = await asyncio.to_thread(
             skill_extractor.compute_category_scores_from_map,
             resume_skills,
             required,
             categories,
         )
+        category_scores = {cat: score for cat, score in raw_category_scores.items() if score > 0}
 
     # 5. Groq narrative (summary, matched_areas, career_tips)
     try:
@@ -388,17 +388,16 @@ async def calculate_match(
             detail="AI service rate limit reached. Please wait a moment and try again.",
         )
 
-    # 6. Experience level + score label
-    exp_level = detect_experience_level(job_description)
-    label     = score_label(result["score"])
+    # 6. Score label
+    label = score_label(result["score"])
 
-    logger.info(f"Final score: {result['score']}% ({label}) | Experience: {exp_level}")
+    logger.info(f"Final score: {result['score']}% ({label})")
 
     return {
         **result,
         "score_label": label,
-        "experience_level": exp_level,
         "semantic_similarity": round(sem_score * 100, 1),
         "category_scores": category_scores,
         "ai_analysis": ai_analysis,
+        "domain": domain,
     }

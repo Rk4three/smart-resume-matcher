@@ -495,13 +495,6 @@ export default function App() {
               <ScoreRing score={result.score} label={result.score_label} />
 
               <div className="flex-1 space-y-4 text-center sm:text-left">
-                {result.experience_level && (
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/30">
-                    <Briefcase className="w-3.5 h-3.5 text-purple-300" />
-                    <span className="text-xs text-purple-200">{result.experience_level} role</span>
-                  </div>
-                )}
-
                 {/* Breakdown pills */}
                 <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
                   <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10">
@@ -569,6 +562,14 @@ export default function App() {
                   <SectionHeader icon={Star} title="Bonus Skills" color="text-blue-400" />
                   <div className="flex flex-wrap gap-2">
                     {result.matched_preferred.map((s, i) => <SkillTag key={i} skill={s} type="preferred" />)}
+                  </div>
+                </GlassCard>
+              )}
+              {result.missing_preferred?.length > 0 && (
+                <GlassCard>
+                  <SectionHeader icon={Star} title="Nice to Have (Missing)" color="text-yellow-400" />
+                  <div className="flex flex-wrap gap-2">
+                    {result.missing_preferred.map((s, i) => <SkillTag key={i} skill={s} type="missing" />)}
                   </div>
                 </GlassCard>
               )}
@@ -680,24 +681,6 @@ export default function App() {
         <Modal onClose={() => setShowCompareModal(false)} title="Resume vs. Job Description" size="xl">
           <div className="flex flex-col h-full">
 
-            {/* Annotation notice if analysis was done */}
-            {result && (
-              <div className="flex flex-wrap items-center gap-4 px-5 py-2.5 border-b border-white/10 flex-shrink-0">
-                <span className="text-xs text-white/35">Showing skill annotations from last analysis</span>
-                <div className="flex items-center gap-3 ml-auto">
-                  <span className="flex items-center gap-1.5 text-xs text-green-300">
-                    <span className="w-2 h-2 rounded-full bg-green-500/60 inline-block" /> Matched
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs text-blue-300">
-                    <span className="w-2 h-2 rounded-full bg-blue-500/60 inline-block" /> Preferred
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs text-red-300">
-                    <span className="w-2 h-2 rounded-full bg-red-500/60 inline-block" /> Missing
-                  </span>
-                </div>
-              </div>
-            )}
-
             {/* Mobile tabs */}
             <div className="flex sm:hidden border-b border-white/10 flex-shrink-0">
               <button
@@ -735,18 +718,13 @@ export default function App() {
                 )}
               </div>
 
-              {/* Right – Annotated JD */}
+              {/* Right – Job Description */}
               <div className={`${compareTab === 'job' ? 'flex' : 'hidden'} sm:flex flex-col w-full sm:w-1/2`}>
                 <div className="px-4 py-2 text-xs font-semibold text-white/30 uppercase tracking-widest flex-shrink-0 hidden sm:block">
                   Job Description
                 </div>
                 <div className="flex-1 overflow-y-auto p-4">
-                  <AnnotatedJobDescription
-                    text={jobDescription}
-                    matchedSkills={result?.matched_skills}
-                    preferredSkills={result?.matched_preferred}
-                    missingSkills={result?.missing_critical}
-                  />
+                  <p className="text-sm text-white/70 whitespace-pre-wrap leading-relaxed">{jobDescription}</p>
                 </div>
               </div>
 
